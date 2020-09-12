@@ -1,6 +1,10 @@
 from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import random
+import re
 
 
 class Driver:
@@ -14,6 +18,7 @@ class Driver:
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36"
         ]
         opts = Options()
+        opts.add_argument("--headless")  # 不显示界面
         # 随机设置user-agent
         opts.add_argument(f"user-agent={random.choice(agents)}")
         # 避免webdriver检测
@@ -34,3 +39,54 @@ class Driver:
 
     def __exit__(self, type, value, trace):
         self._driver.quit()
+
+
+def login(driver):
+    user = 'bignilakke@enayu.com'
+    passwd = 'Lxnp7U63LaYGDik'
+
+    def until_clickable(xpath):
+        return WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable(
+                (By.XPATH, xpath)
+            )
+        )
+    driver.get('https://www.qimai.cn/')
+    # 七周年回馈浮动广告 会影响点击登录按钮
+    until_clickable('//*[@id="app"]/div[9]/div/i').click()
+    # 登录按钮
+    until_clickable(
+        '//*[@id="app"]/div[1]/div/div/div/div[2]/div/a[1]').click()
+    # 点击密码登录
+    until_clickable('//*[@id="signin"]/ul/li[2]').click()
+    # 邮箱名
+    until_clickable(
+        '//*[@id="password-logon"]/form/div[1]/div/div/input').send_keys(user)
+    # 密码
+    until_clickable(
+        '//*[@id="password-logon"]/form/div[2]/div/div/input').send_keys(passwd)
+    # 确认登录
+    until_clickable('//*[@id="password-logon"]/div[3]').click()
+
+
+# 每日排行榜
+# 爬取某一天的对应网址
+def handle_page(driver, date):
+    driver.get(
+        f"https://www.qimai.cn/rank/index/brand/all/device/iphone/country/cn/genre/36/date/{date.strftime('%Y-%m-%d')}")
+
+    ul = WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located(
+            # 免费榜
+            (By.XPATH, '//*[@id="rank-all-list"]/div[2]/div[2]/div[1]/div/ul'))
+    )
+    items = ul.find_elements_by_class_name('info-content')
+    rank = []
+    for div in items:
+        a = div.find_element_by_tag_name('a')
+        app_id = re.search(r'appid/(\d+)', a.get_attribute('href')).group(1)
+        app_name = a.text
+        rank_item = div.find_element_by_class_name('rank-item').text
+        rank.append({'app_id': app_id, 'app_name': app_name,
+                     'rank_item': int(rank_item)})
+    return rank

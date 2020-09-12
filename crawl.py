@@ -1,71 +1,24 @@
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from driver import Driver
+from driver import Driver, handle_page, login
 import csv
-import re
 import random
 import time
 import utils
 import datetime
-
-
-user = 'bignilakke@enayu.com'
-passwd = 'Lxnp7U63LaYGDik'
-
-
-def login(driver):
-    def until_clickable(xpath):
-        return WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, xpath)
-            )
-        )
-    driver.get('https://www.qimai.cn/')
-    # 七周年回馈浮动广告 会影响点击登录按钮
-    until_clickable('//*[@id="app"]/div[9]/div/i').click()
-    # 登录按钮
-    until_clickable(
-        '//*[@id="app"]/div[1]/div/div/div/div[2]/div/a[1]').click()
-    # 点击密码登录
-    until_clickable('//*[@id="signin"]/ul/li[2]').click()
-    # 邮箱名
-    until_clickable(
-        '//*[@id="password-logon"]/form/div[1]/div/div/input').send_keys(user)
-    # 密码
-    until_clickable(
-        '//*[@id="password-logon"]/form/div[2]/div/div/input').send_keys(passwd)
-    # 确认登录
-    until_clickable('//*[@id="password-logon"]/div[3]').click()
-
-
-# 每日排行榜
-def handle_page(driver, date):
-    driver.get(
-        f"https://www.qimai.cn/rank/index/brand/all/device/iphone/country/cn/genre/36/date/{date.strftime('%Y-%m-%d')}")
-
-    ul = WebDriverWait(driver, 30).until(
-        EC.presence_of_element_located(
-            # 免费榜
-            (By.XPATH, '//*[@id="rank-all-list"]/div[2]/div[2]/div[1]/div/ul'))
-    )
-    items = ul.find_elements_by_class_name('info-content')
-    rank = []
-    for div in items:
-        a = div.find_element_by_tag_name('a')
-        app_id = re.search(r'appid/(\d+)', a.get_attribute('href')).group(1)
-        app_name = a.text
-        rank_item = div.find_element_by_class_name('rank-item').text
-        rank.append({'app_id': app_id, 'app_name': app_name,
-                     'rank_item': int(rank_item)})
-    return rank
-
+from tqdm import tqdm # 进度条
 
 if __name__ == "__main__":
+    # 存储所有app的结果 格式如下
+    # {
+    #     000001: {
+    #         app_name: xxx,
+    #         ranks: [{ date: 某一天, rank: 排名 }]
+    #     }
+    # }
     res = dict()
     with Driver() as driver:
+        print('登录中')
         login(driver)
-        for d in utils.days_between(datetime.date(2020, 9, 4), datetime.date.today()):
+        for d in tqdm(utils.days_between(datetime.date(2019, 9, 12), datetime.date.today())):
             # 遍历每一天的排行榜
             for app in handle_page(driver, d):
                 app_id = app['app_id']
@@ -81,15 +34,18 @@ if __name__ == "__main__":
                 else:
                     res[app_id]['ranks'].append(rank)
 
-            time.sleep(0.5 + random.random() * 2)  # 等待0.5-2.5s
+            # 避免太过规律被网站检测出来 可以考虑删除
+            time.sleep(random.random())  # 等待0-1s
 
-    print(res)
-
-    # 计算平均排名 并写入
-    with open('dist.csv', 'w', newline='') as csvfile:
+    # 计算平均排名 并写入csv文件
+    with open('dist.csv', 'w') as csvfile:
         spamwriter = csv.writer(csvfile)
+        spamwriter.writerow(['APP ID', 'APP NAME', 'RANK'])
         for app_id in res:
             app = res[app_id]
             ranks = app['ranks']
+            # 计算平均值 比如只有一次上榜 则最终排名就是该排名(出现次数为1)
             avg = sum(r['rank'] for r in ranks) / len(ranks)
-            spamwriter.writerow([str(app_id), str(app['app_name']), str(avg)])
+            spamwriter.writerow(
+                # avg保留两位小数
+                [str(app_id), str(app['app_name']), f'avg:.2f'])
